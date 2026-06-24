@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>EduGuide Agent</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+    background: #f4f6f8;
+    margin: 0;
+    display: flex;
+    justify-content: center;
+    padding: 24px;
+  }
+  .app {
+    width: 100%;
+    max-width: 640px;
+    background: white;
+    border-radius: 16px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    height: 90vh;
+  }
+  header {
+    padding: 18px 20px;
+    background: #2d6a4f;
+    color: white;
+  }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 4px 0 0; font-size: 12px; opacity: 0.85; }
+  #chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .msg { max-width: 85%; padding: 10px 14px; border-radius: 12px; line-height: 1.4; white-space: pre-wrap; font-size: 14px; }
+  .user { align-self: flex-end; background: #2d6a4f; color: white; }
+  .bot { align-self: flex-start; background: #eef1f0; color: #222; }
+  .meta { font-size: 11px; color: #888; margin-top: 2px; }
+  form { display: flex; gap: 8px; padding: 14px; border-top: 1px solid #eee; }
+  input[type=text] {
+    flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px;
+  }
+  button {
+    background: #2d6a4f; color: white; border: none; border-radius: 8px;
+    padding: 10px 16px; cursor: pointer; font-size: 14px;
+  }
+  .upload-row { display: flex; gap: 8px; padding: 0 14px 10px; align-items: center; font-size: 12px; color: #555; }
+  .upload-row input[type=file] { font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🎓 EduGuide Agent</h1>
+    <p>Free AI tutor — explains topics, quizzes you, tracks your progress</p>
+  </header>
+  <div id="chat"></div>
+  <div class="upload-row">
+    📎 Upload your own notes (PDF/TXT) to learn from instead of Wikipedia:
+    <input type="file" id="fileInput" accept=".pdf,.txt">
+  </div>
+  <form id="chatForm">
+    <input type="text" id="input" placeholder="Try: Explain photosynthesis" autocomplete="off">
+    <button type="submit">Send</button>
+  </form>
+</div>
+
+<script>
+const sessionId = localStorage.getItem("eduguide_session") ||
+  (() => { const id = "sess_" + Math.random().toString(36).slice(2); localStorage.setItem("eduguide_session", id); return id; })();
+
+const chat = document.getElementById("chat");
+const form = document.getElementById("chatForm");
+const input = document.getElementById("input");
+const fileInput = document.getElementById("fileInput");
+
+function addMessage(text, who, meta) {
+  const div = document.createElement("div");
+  div.className = "msg " + who;
+  div.textContent = text;
+  chat.appendChild(div);
+  if (meta) {
+    const m = document.createElement("div");
+    m.className = "meta";
+    m.textContent = meta;
+    chat.appendChild(m);
+  }
+  chat.scrollTop = chat.scrollHeight;
+}
+
+addMessage("👋 Hi! I'm EduGuide. Ask me to explain a topic, then type 'quiz me' to test yourself. Type 'show my progress' anytime.", "bot");
+
+form.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const message = input.value.trim();
+  if (!message) return;
+  addMessage(message, "user");
+  input.value = "";
+
+  const body = new FormData();
+  body.append("session_id", sessionId);
+  body.append("message", message);
+
+  let data;
+  try {
+    const res = await fetch("/chat", { method: "POST", body });
+    data = await res.json();
+  } catch (err) {
+    addMessage("⚠️ Network/parse error: " + err.message, "bot");
+    return;
+  }
+
+  if (data.type === "progress") {
+    const p = data.data;
+    const topics = p.topics_learned.map(t => `• ${t.topic} (${t.source})`).join("\n") || "None yet";
+    addMessage(`📊 Progress:\nTopics learned:\n${topics}\n\nQuiz accuracy: ${p.quiz_accuracy}`, "bot");
+  } else {
+    addMessage(data.message, "bot", data.source ? `Source: ${data.source}` : null);
+  }
+});
+
+fileInput.addEventListener("change", async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  const body = new FormData();
+  body.append("session_id", sessionId);
+  body.append("file", file);
+  addMessage(`Uploading "${file.name}"...`, "user");
+
+  let data;
+  try {
+    const res = await fetch("/upload", { method: "POST", body });
+    data = await res.json();
+    if (!res.ok || data.status === "error") {
+      addMessage(`⚠️ Upload failed: ${data.message || "Unknown error"}`, "bot");
+      return;
+    }
+  } catch (err) {
+    addMessage("⚠️ Upload network error: " + err.message, "bot");
+    return;
+  }
+
+  addMessage(`✅ Got it! Stored ${data.chunks_stored} chunks from "${data.filename}". Now ask me to explain something from it.`, "bot");
+});
+</script>
+</body>
+</html>
