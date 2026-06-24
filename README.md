@@ -49,6 +49,7 @@ Visit `http://localhost:8000`
 ## Cost
 
 $0 — Gemini free tier, Wikipedia API, SQLite (local file), Render free tier.
+🔗 **Live Demo:** https://eduguide-app.onrender.com
 
 ## Author
 
